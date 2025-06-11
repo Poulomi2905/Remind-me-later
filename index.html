@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remind Me Later App</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font as per instructions */
+            background-color: #f0f4f8; /* Light blue-gray background */
+        }
+        .container {
+            max-width: 800px;
+        }
+        /* Custom styles for better button appearance */
+        button {
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+        button:hover {
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex items-center justify-center min-h-screen">
+    <div class="container bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-200 w-full">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-center text-gray-800 mb-8">
+            <span class="text-indigo-600">Remind</span> <span class="text-purple-600">Me</span> <span class="text-pink-600">Later</span>
+        </h1>
+
+        <!-- Reminder Submission Form -->
+        <div class="mb-10 p-6 bg-indigo-50 rounded-lg border border-indigo-200">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-6 text-center">Set a New Reminder</h2>
+            <form id="reminderForm" class="space-y-4">
+                <div>
+                    <label for="reminderDate" class="block text-sm font-medium text-gray-700 mb-1">Reminder Date:</label>
+                    <input type="date" id="reminderDate" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="reminderTime" class="block text-sm font-medium text-gray-700 mb-1">Reminder Time:</label>
+                    <input type="time" id="reminderTime" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="message" class="block text-sm font-medium text-gray-700 mb-1">Message:</label>
+                    <textarea id="message" rows="3" required placeholder="Enter your reminder message here..."
+                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                </div>
+                <div>
+                    <label for="reminderType" class="block text-sm font-medium text-gray-700 mb-1">Remind Via:</label>
+                    <select id="reminderType" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <option value="email">Email</option>
+                        <option value="sms">SMS</option>
+                    </select>
+                </div>
+                <div class="flex justify-center">
+                    <button type="submit"
+                            class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Set Reminder
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Reminders Display Area -->
+        <div class="p-6 bg-purple-50 rounded-lg border border-purple-200">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-6 text-center">Your Scheduled Reminders</h2>
+            <div id="remindersList" class="space-y-4">
+                <!-- Reminders will be loaded here by JavaScript -->
+                <p class="text-center text-gray-500" id="noRemindersMessage">No reminders set yet. Add one above!</p>
+            </div>
+            <div class="flex justify-center mt-6">
+                <button id="refreshReminders"
+                        class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                    Refresh Reminders
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API Base URL ---
+        // Make sure this matches where your Flask API is running
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+
+        // --- DOM Elements ---
+        const reminderForm = document.getElementById('reminderForm');
+        const reminderDateInput = document.getElementById('reminderDate');
+        const reminderTimeInput = document.getElementById('reminderTime');
+        const messageInput = document.getElementById('message');
+        const reminderTypeSelect = document.getElementById('reminderType');
+        const remindersListDiv = document.getElementById('remindersList');
+        const noRemindersMessage = document.getElementById('noRemindersMessage');
+        const refreshRemindersButton = document.getElementById('refreshReminders');
+
+        // --- Helper Function for Displaying Messages (instead of alert) ---
+        function showMessage(msg, type = 'info') {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `p-3 mb-4 rounded-md text-sm text-center ${
+                type === 'success' ? 'bg-green-100 text-green-800' :
+                type === 'error' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+            messageContainer.textContent = msg;
+            remindersListDiv.prepend(messageContainer); // Add above the list
+            setTimeout(() => messageContainer.remove(), 5000); // Remove after 5 seconds
+        }
+
+        // --- Function to Add a New Reminder ---
+        async function addReminder(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            const reminderData = {
+                reminder_date: reminderDateInput.value,
+                reminder_time: reminderTimeInput.value,
+                message: messageInput.value,
+                reminder_type: reminderTypeSelect.value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/reminders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(reminderData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) { // Check if status is 2xx
+                    showMessage(result.message || 'Reminder saved successfully!', 'success');
+                    reminderForm.reset(); // Clear the form
+                    loadReminders(); // Reload the list of reminders
+                } else {
+                    showMessage(result.message || 'Failed to save reminder.', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving reminder:', error);
+                showMessage('Network error or API is not reachable.', 'error');
+            }
+        }
+
+        // --- Function to Load Existing Reminders ---
+        async function loadReminders() {
+            remindersListDiv.innerHTML = ''; // Clear previous reminders
+            noRemindersMessage.style.display = 'none'; // Hide "no reminders" message initially
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/reminders`);
+                const result = await response.json();
+
+                if (response.ok && result.reminders && result.reminders.length > 0) {
+                    result.reminders.forEach(reminder => {
+                        const reminderCard = document.createElement('div');
+                        reminderCard.className = 'bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col md:flex-row md:items-center justify-between';
+                        
+                        // Format date and time for display
+                        const formattedDate = new Date(reminder.reminder_date + 'T' + reminder.reminder_time).toLocaleDateString('en-US', {
+                            year: 'numeric', month: 'long', day: 'numeric'
+                        });
+                        const formattedTime = new Date('2000-01-01T' + reminder.reminder_time).toLocaleTimeString('en-US', {
+                            hour: '2-digit', minute: '2-digit', hour12: true
+                        });
+
+
+                        reminderCard.innerHTML = `
+                            <div>
+                                <p class="text-lg font-semibold text-gray-800">${reminder.message}</p>
+                                <p class="text-sm text-gray-600">
+                                    <span class="font-medium">When:</span> ${formattedDate} at ${formattedTime}
+                                </p>
+                                <p class="text-sm text-gray-600">
+                                    <span class="font-medium">Via:</span> <span class="capitalize">${reminder.reminder_type}</span>
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                    Created on: ${new Date(reminder.created_at).toLocaleString()}
+                                </p>
+                            </div>
+                            <!-- Future actions could go here, e.g., Edit/Delete buttons -->
+                        `;
+                        remindersListDiv.appendChild(reminderCard);
+                    });
+                } else {
+                    noRemindersMessage.style.display = 'block'; // Show if no reminders or error
+                }
+            } catch (error) {
+                console.error('Error loading reminders:', error);
+                showMessage('Failed to load reminders. Is the API running?', 'error');
+                noRemindersMessage.style.display = 'block'; // Show message if API fails
+                noRemindersMessage.textContent = 'Could not load reminders. Please ensure the backend API is running.';
+            }
+        }
+
+        // --- Event Listeners ---
+        reminderForm.addEventListener('submit', addReminder);
+        refreshRemindersButton.addEventListener('click', loadReminders);
+
+        // --- Initial Load ---
+        // Load reminders when the page first loads
+        document.addEventListener('DOMContentLoaded', loadReminders);
+    </script>
+</body>
+</html>
